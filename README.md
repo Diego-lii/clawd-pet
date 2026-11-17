@@ -19,7 +19,9 @@ This is a fan project. It is not affiliated with or endorsed by Anthropic.
 xcode-select --install
 ```
 
-No extra permissions are needed: no Accessibility, no Screen Recording.
+No Accessibility or Screen Recording permission is needed. The first time Apple Music or
+Spotify is open, macOS asks once whether Clawd may ask them what is playing; that is only
+used to dance along.
 
 ## Build and run
 
@@ -87,14 +89,16 @@ thinking with "...").
 |---|---|
 | The cursor rushes past it | Gets startled ("!") and runs away |
 | You do not touch the Mac for 2.5 minutes | Falls asleep; wakes up startled when you come back |
-| You switch to Claude, Xcode, VS Code, Terminal, a browser, Slack, Spotify... | Comments on it (with Spotify it dances) |
+| You switch to Claude, Xcode, VS Code, Terminal, a browser, Slack... | Comments on it |
+| A song is playing in Apple Music or Spotify | Dances and shows the song title; keeps dancing now and then while the music plays |
 | It is late at night | Sleeps more often |
 | On launch | Greets you according to the time of day |
 | Battery below 15 % and not charging | Warns you |
 | Claude Code is working in a session | "Types" with its arms; celebrates when the session goes quiet |
 
 Claude Code detection watches the session logs in `~/.claude/projects`. Nothing is read
-or sent anywhere; only the timestamps of file changes matter.
+or sent anywhere; only the timestamps of file changes matter. Music detection asks Apple
+Music and Spotify through AppleScript, every 3 seconds, only while they are open.
 
 ## Controls
 

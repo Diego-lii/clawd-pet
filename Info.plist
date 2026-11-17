@@ -11,6 +11,7 @@
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>Clawd asks Music and Spotify whether a song is playing so it can dance along.</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>

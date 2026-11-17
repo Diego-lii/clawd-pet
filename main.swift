@@ -89,7 +89,7 @@ let phrases = [
 ]
 let clickPhrases = ["Hey!", "Haha!", "Yes?", "Here I am!", "Wheee!", "Again!"]
 
-enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled }
+enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance }
 enum EyeStyle { case open, closed, wink, happy, dizzy }
 
 // MARK: - Drawing Clawd
@@ -159,6 +159,12 @@ final class PetView: NSView {
         ctx.scaleBy(x: sx, y: sy)
         ctx.translateBy(x: -spriteCenterX, y: -oy)
         if mode == .run { ctx.translateBy(x: 0, y: abs(sin(time * 14)) * 3) }
+        if mode == .dance {
+            // sway to the beat
+            ctx.translateBy(x: spriteCenterX, y: oy + PetView.rows * PetView.u / 2)
+            ctx.rotate(by: sin(time * 7) * 0.12)
+            ctx.translateBy(x: -spriteCenterX, y: -(oy + PetView.rows * PetView.u / 2))
+        }
 
         // body
         fill(cell(1, 0, 9, 6), orange)
@@ -336,6 +342,10 @@ final class Pet: NSObject {
     var claudeActiveUntil: TimeInterval = 0
     var claudeWorkStart: TimeInterval = 0
     var claudeAnnounced = false
+    var musicPlaying = false
+    var musicTrack = ""
+    var musicTimer: CGFloat = 2
+    var musicQuerying = false
 
     var spriteW: CGFloat { PetView.cols * PetView.u }
     var spriteH: CGFloat { PetView.rows * PetView.u }
@@ -445,6 +455,7 @@ final class Pet: NSObject {
         case .dizzy: v.eyeStyle = .dizzy
         case .think: say("...", for: secs)
         case .startled: v.hopVel = 170
+        case .dance: v.eyeStyle = .happy
         default: break
         }
     }
@@ -465,6 +476,7 @@ final class Pet: NSObject {
         let r = Double.random(in: 0..<1)
         let sleepBias = isNight ? 0.12 : 0.0
         let onPlatform = standing && standingOn != "floor"
+        if musicPlaying && r < 0.3 { enter(.dance, for: CGFloat.random(in: 5...9)); return }
         switch r {
         case ..<0.20: enter(.idle, for: CGFloat.random(in: 2...5))
         case ..<0.42:
@@ -542,6 +554,41 @@ final class Pet: NSObject {
         return nil
     }
 
+    // Asks Apple Music and Spotify (only if they are open) whether a song is playing.
+    func checkMusic() {
+        guard !musicQuerying else { return }
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
+        let players = ["com.apple.Music", "com.spotify.client"].filter { running.contains($0) }
+        if players.isEmpty { musicResult(""); return }
+        musicQuerying = true
+        let source = players.map { id in """
+            try
+                tell application id "\(id)"
+                    if player state is playing then return (name of current track) & " — " & (artist of current track)
+                end tell
+            end try
+            """ }.joined(separator: "\n") + "\nreturn \"\""
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var error: NSDictionary?
+            let out = NSAppleScript(source: source)?.executeAndReturnError(&error).stringValue ?? ""
+            DispatchQueue.main.async { self?.musicQuerying = false; self?.musicResult(out) }
+        }
+    }
+    func musicResult(_ track: String) {
+        let playing = !track.isEmpty
+        let changed = playing && track != musicTrack
+        musicPlaying = playing
+        musicTrack = track
+        let v = view
+        let busy = dragging || airborne || v.mode == .sleep || v.mode == .drag || v.mode == .work || v.mode == .startled
+        if changed && !busy {
+            enter(.dance, for: 8)
+            say("♪ " + track, for: 4)
+        } else if !playing && v.mode == .dance {
+            enter(.idle, for: 2)
+        }
+    }
+
     func userIdleSeconds() -> Double {
         let types: [CGEventType] = [.mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown, .scrollWheel, .leftMouseDragged]
         return types.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min() ?? 0
@@ -554,12 +601,11 @@ final class Pet: NSObject {
               let name = app.localizedName else { return }
         let bid = app.bundleIdentifier ?? ""
         var line: String? = nil
-        var cheer = false
         switch true {
         case name == "Claude" || bid.contains("anthropic"): line = ["Hi, Claude! 👋", "My team!", "Let's get to work!"].randomElement()
         case ["Xcode", "Code", "Visual Studio Code", "Cursor", "Terminal", "iTerm2", "Warp", "Zed"].contains(name):
             line = ["Coding time? 👀", "Code mode!", "Did you commit yet?"].randomElement()
-        case ["Spotify", "Music", "Música"].contains(name): line = "♪ ♫"; cheer = true
+        case ["Spotify", "Music", "Música"].contains(name): line = "♪ ♫"
         case ["Safari", "Google Chrome", "Arc", "Firefox", "Brave Browser"].contains(name):
             line = ["Browsing?", "Don't get distracted 😄", "What are we looking for?"].randomElement()
         case ["Slack", "Discord", "Messages", "Mensajes", "WhatsApp", "Telegram"].contains(name):
@@ -570,7 +616,7 @@ final class Pet: NSObject {
         }
         guard let l = line, Double.random(in: 0..<1) < 0.6 else { return }
         appCommentCooldown = 25
-        if cheer { enter(.cheer, for: 3) } else if !airborne && view.mode != .drag { enter(.idle, for: 3) }
+        if !airborne && view.mode != .drag { enter(.idle, for: 3) }
         say(l, for: 2.8)
     }
 
@@ -644,6 +690,10 @@ final class Pet: NSObject {
             idleSleeping = false
             enter(.startled, for: 0.7); say("Huh?! You're back!", for: 2.5)
         }
+
+        // music
+        musicTimer -= dt
+        if musicTimer <= 0 { musicTimer = 3; checkMusic() }
 
         // battery
         batteryTimer -= dt
@@ -726,6 +776,10 @@ final class Pet: NSObject {
                 place()
             }
             modeTime -= dt
+        case .dance:
+            v.armL = Int(v.time * 3.5) % 2; v.armR = 1 - v.armL
+            if v.hop == 0 && v.hopVel == 0 { v.hopVel = 110 }
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
         case .wave:
             v.armR = Int(v.time * 4) % 2
             modeTime -= dt; if modeTime <= 0 { pickBehavior() }
@@ -845,6 +899,7 @@ render("dizzy") { $0.eyeStyle = .dizzy; $0.armL = 1 }
 render("think") { $0.speech = "..." }
 render("work")  { $0.mode = .work; $0.armL = 1; $0.eyeDY = 1; $0.speech = "Claude is working…" }
 render("startled") { $0.hop = 10; $0.speech = "!" }
+render("dance") { $0.mode = .dance; $0.eyeStyle = .happy; $0.armL = 1; $0.time = 0.2; $0.speech = "♪ Song — Artist" }
 // list the detected windows
 let plats = visiblePlatforms(excluding: 0)
 print("windows:", plats.count)
