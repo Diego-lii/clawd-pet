@@ -26,7 +26,7 @@ used to dance along.
 ## Build and run
 
 ```bash
-git clone https://github.com/diego609-eng/clawd-pet.git
+git clone https://github.com/Diego-lii/clawd-pet.git
 cd clawd-pet
 ./build.sh
 open ClawdPet.app
