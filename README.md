@@ -90,7 +90,7 @@ it to Applications and set it to start at login, replace it and restart the agen
 
 ```bash
 rm -rf ~/Applications/ClawdPet.app && cp -R ClawdPet.app ~/Applications/
-launchctl kickstart -k gui/$(id -u) dev.clawdpet.app
+launchctl kickstart -k gui/$(id -u)/dev.clawdpet.app
 ```
 
 ## What Clawd does on its own
