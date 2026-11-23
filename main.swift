@@ -9,6 +9,20 @@ let ink    = NSColor(srgbRed: 0.10, green: 0.09, blue: 0.09, alpha: 1)
 let cream  = NSColor(srgbRed: 0.99, green: 0.97, blue: 0.93, alpha: 1)
 let spark  = NSColor(srgbRed: 1.00, green: 0.80, blue: 0.30, alpha: 1)
 let zGray  = NSColor(srgbRed: 0.55, green: 0.58, blue: 0.62, alpha: 1)
+// props
+let screenDark = NSColor(srgbRed: 0.16, green: 0.16, blue: 0.23, alpha: 1)
+let codeGreen  = NSColor(srgbRed: 0.45, green: 0.75, blue: 0.40, alpha: 1)
+let codeBlue   = NSColor(srgbRed: 0.45, green: 0.65, blue: 0.95, alpha: 1)
+let codeYellow = NSColor(srgbRed: 0.95, green: 0.78, blue: 0.30, alpha: 1)
+let keyGray    = NSColor(srgbRed: 0.42, green: 0.45, blue: 0.50, alpha: 1)
+let keyLight   = NSColor(srgbRed: 0.62, green: 0.65, blue: 0.70, alpha: 1)
+let phoneBlue  = NSColor(srgbRed: 0.25, green: 0.43, blue: 0.64, alpha: 1)
+let bookBlue   = NSColor(srgbRed: 0.36, green: 0.55, blue: 0.85, alpha: 1)
+let broomWood  = NSColor(srgbRed: 0.48, green: 0.31, blue: 0.18, alpha: 1)
+let broomStraw = NSColor(srgbRed: 0.93, green: 0.72, blue: 0.25, alpha: 1)
+let lensFill   = NSColor(srgbRed: 0.62, green: 0.70, blue: 0.78, alpha: 0.85)
+let lensEdge   = NSColor(srgbRed: 0.43, green: 0.52, blue: 0.60, alpha: 1)
+let ballRed    = NSColor(srgbRed: 0.90, green: 0.35, blue: 0.30, alpha: 1)
 
 
 // MARK: - Language (English by default, Spanish when the Mac is set to Spanish)
@@ -89,8 +103,8 @@ let phrases = [
 ]
 let clickPhrases = ["Hey!", "Haha!", "Yes?", "Here I am!", "Wheee!", "Again!"]
 
-enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance }
-enum EyeStyle { case open, closed, wink, happy, dizzy }
+enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance, read, sweep, juggle }
+enum EyeStyle { case open, closed, wink, happy, dizzy, content }
 
 // MARK: - Drawing Clawd
 //
@@ -107,7 +121,7 @@ enum EyeStyle { case open, closed, wink, happy, dizzy }
 final class PetView: NSView {
     weak var pet: Pet?
     static let w: CGFloat = 200
-    static let h: CGFloat = 140
+    static let h: CGFloat = 175
     static let u: CGFloat = 6                 // size of one pixel (change it to make Clawd bigger or smaller)
     static let cols: CGFloat = 11, rows: CGFloat = 8
     var ox: CGFloat { (PetView.w - PetView.cols * PetView.u) / 2 }
@@ -180,11 +194,16 @@ final class PetView: NSView {
         }
         // eyes (hidden while turning)
         if turnScale > 0.45 { drawEyes() }
+        drawProps()
         ctx.restoreGState()
 
         if sparkleT > 0 { drawSparkles() }
         if sleeping { drawZs() }
-        if let t = speech { drawBubble(t, topY: spriteTop + (armL + armR > 0 ? u : 0) + 6, tailX: spriteCenterX) }
+        if let t = speech {
+            var extra: CGFloat = armL + armR > 0 ? u : 0
+            if mode == .work { extra = 8.5 * u } else if mode == .dance { extra = 1.5 * u } else if mode == .juggle { extra = 5.5 * u }
+            drawBubble(t, topY: spriteTop + extra + 6, tailX: spriteCenterX)
+        }
     }
 
     func drawEyes() {
@@ -202,6 +221,15 @@ final class PetView: NSView {
                 fill(r, ink)
             case .closed, .wink:
                 fill(NSRect(x: r.minX, y: r.minY, width: u, height: u * 0.35), ink)
+            case .content:
+                // "v v": relaxed eyes
+                let p = NSBezierPath()
+                let cx = r.midX, cy = r.midY, hw = u * 0.75, hh = u * 0.45
+                p.move(to: CGPoint(x: cx - hw, y: cy + hh))
+                p.line(to: CGPoint(x: cx, y: cy - hh))
+                p.line(to: CGPoint(x: cx + hw, y: cy + hh))
+                p.lineWidth = u * 0.4; p.lineJoinStyle = .miter; p.lineCapStyle = .butt
+                ink.setStroke(); p.stroke()
             case .happy:
                 let p = NSBezierPath()
                 let cx = r.midX, cy = r.midY, hw = u * 0.7, hh = u * 0.75
@@ -219,6 +247,94 @@ final class PetView: NSView {
                 p.lineWidth = u * 0.38; p.lineCapStyle = .butt
                 ink.setStroke(); p.stroke()
             }
+        }
+    }
+
+    // Accessories for some states: laptop, headphones, glasses and book, broom, balls, magnifier.
+    func drawProps() {
+        let u = PetView.u
+        switch mode {
+        case .work:
+            // screen above the head
+            fill(cell(0.5, -8, 10, 6.5), screenDark)
+            fill(NSRect(x: cell(1, -7.6).minX, y: cell(1, -7.6).minY, width: u * 0.5, height: u * 0.5), ballRed)
+            fill(NSRect(x: cell(1.8, -7.6).minX, y: cell(1.8, -7.6).minY, width: u * 0.5, height: u * 0.5), codeYellow)
+            fill(NSRect(x: cell(2.6, -7.6).minX, y: cell(2.6, -7.6).minY, width: u * 0.5, height: u * 0.5), codeGreen)
+            // code lines that get typed in
+            let lines: [(CGFloat, CGFloat, NSColor)] = [(1.2, 4.5, codeGreen), (2.0, 5.5, codeGreen), (2.0, 3.0, codeBlue), (2.8, 4.0, codeBlue), (1.2, 2.5, codeYellow)]
+            let progress = (time * 1.4).truncatingRemainder(dividingBy: CGFloat(lines.count) + 1.5)
+            for (i, l) in lines.enumerated() {
+                let shown = clamp(progress - CGFloat(i), 0, 1)
+                if shown > 0 { fill(cell(l.0, -6.6 + CGFloat(i) * 0.9, l.1 * shown, 0.5), l.2) }
+            }
+            // keyboard in front of the body
+            fill(cell(-0.5, 4, 12, 2), keyGray)
+            for kx in stride(from: 0.0, to: 11.0, by: 1.0) {
+                for ky in [4.3, 5.1] { fill(cell(CGFloat(kx) + 0.1, CGFloat(ky), 0.6, 0.5), keyLight) }
+            }
+        case .dance:
+            // headphones
+            fill(cell(1, -1, 9, 1), phoneBlue)
+            fill(cell(0, -1, 1, 2), phoneBlue); fill(cell(10, -1, 1, 2), phoneBlue)
+            fill(cell(-0.5, 1, 1.5, 2.6), phoneBlue); fill(cell(10, 1, 1.5, 2.6), phoneBlue)
+            // floating notes
+            for i in 0..<2 {
+                let ph = (time * 0.7 + CGFloat(i) * 0.5).truncatingRemainder(dividingBy: 1)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 9 + ph * 6, weight: .bold),
+                    .foregroundColor: codeYellow.withAlphaComponent(1 - ph)]
+                let side: CGFloat = i == 0 ? -1 : 1
+                NSAttributedString(string: "♪", attributes: attrs)
+                    .draw(at: CGPoint(x: spriteCenterX + side * (5 * u + ph * 10), y: oy + 6 * u + hop + ph * 28))
+            }
+        case .read:
+            // round glasses
+            lensEdge.setStroke()
+            for bx in [CGFloat(2), CGFloat(8)] {
+                let r = cell(bx, 2)
+                let g = NSBezierPath(ovalIn: r.insetBy(dx: -u * 0.45, dy: -u * 0.45))
+                g.lineWidth = 1.6; ink.setStroke(); g.stroke()
+            }
+            fill(NSRect(x: cell(3, 2).minX - u * 0.45, y: cell(3, 2).midY - 0.8, width: 5 * u + u * 0.9, height: 1.6), ink)
+            // book held in front, pages flip every 1.6 s
+            fill(cell(0.3, 3.3, 4, 2.4), bookBlue)
+            fill(cell(2.25, 3.3, 0.2, 2.4), phoneBlue)
+            let flip = Int(time / 1.6) % 2
+            for i in 0..<3 {
+                let w: CGFloat = (i + flip) % 2 == 0 ? 1.3 : 0.9
+                fill(cell(0.6, 3.7 + CGFloat(i) * 0.6, w, 0.25), cream)
+                fill(cell(2.7, 3.7 + CGFloat(i) * 0.6, w, 0.25), cream)
+            }
+        case .sweep:
+            // broom: handle from the left arm to a brush that sweeps on the floor
+            let sway = sin(time * 4)
+            let hand = CGPoint(x: cell(0.5, 2.5).midX, y: cell(0.5, 2.5).midY)
+            let brush = CGPoint(x: cell(-1.2 + sway * 1.3, 7.9).midX, y: cell(0, 7.9).midY)
+            let h = NSBezierPath(); h.move(to: hand); h.line(to: brush)
+            h.lineWidth = u * 0.45; h.lineCapStyle = .round; broomWood.setStroke(); h.stroke()
+            fill(NSRect(x: brush.x - u, y: brush.y - u * 0.3, width: 2 * u, height: u * 0.9), broomStraw)
+            if sway > 0.9 { fill(cell(9.5, -0.8, 0.4, 0.6), codeBlue) }
+        case .juggle:
+            // three balls flying between the hands
+            let colors = [codeGreen, ballRed, codeYellow]
+            for i in 0..<3 {
+                let q = (time * 0.55 + CGFloat(i) / 3).truncatingRemainder(dividingBy: 1)
+                let t = q < 0.5 ? q * 2 : (1 - q) * 2
+                let x = 0.5 + 10 * t, y = 2.5 - 5 * sin(t * .pi)
+                let c = cell(x, y)
+                fill(NSRect(x: c.midX - u * 0.5, y: c.midY - u * 0.5, width: u, height: u), colors[i])
+            }
+        case .think:
+            // magnifier over the right eye (the eye looks bigger through it)
+            let r = cell(7.4, 1.4, 2.2, 2.2)
+            if mode == .think { let e = cell(8, 2); fill(NSRect(x: e.midX - u * 0.75, y: e.midY - u * 0.75, width: u * 1.5, height: u * 1.5), ink) }
+            let lens = NSBezierPath(roundedRect: r, xRadius: u * 0.5, yRadius: u * 0.5)
+            lensFill.setFill(); lens.fill()
+            lens.lineWidth = 1.4; lensEdge.setStroke(); lens.stroke()
+            fill(NSRect(x: r.minX + u * 0.35, y: r.maxY - u * 0.8, width: u * 0.45, height: u * 0.45), cream)
+            let hd = NSBezierPath(); hd.move(to: CGPoint(x: r.maxX - 2, y: r.minY + 2)); hd.line(to: CGPoint(x: r.maxX + u * 0.8, y: r.minY - u * 0.8))
+            hd.lineWidth = u * 0.45; hd.lineCapStyle = .round; broomWood.setStroke(); hd.stroke()
+        default: break
         }
     }
 
@@ -455,7 +571,8 @@ final class Pet: NSObject {
         case .dizzy: v.eyeStyle = .dizzy
         case .think: say("...", for: secs)
         case .startled: v.hopVel = 170
-        case .dance: v.eyeStyle = .happy
+        case .dance: v.eyeStyle = .content
+        case .read: v.armL = 1
         default: break
         }
     }
@@ -489,10 +606,13 @@ final class Pet: NSObject {
             // walk along the window it is standing on
             let range = walkableRange(aroundX: centerX)
             startWalk(toX: CGFloat.random(in: range))
-        case ..<0.74: startWave(Bool.random() ? "Hi!" : nil)
-        case ..<0.79: enter(.cheer, for: 2.5); say(["Yes!", "We did it!", "✦"].randomElement()!, for: 2)
-        case ..<0.85: enter(.think, for: 3)
-        case ..<(0.91 + sleepBias): enter(.sleep, for: CGFloat.random(in: 10...25))
+        case ..<0.72: startWave(Bool.random() ? "Hi!" : nil)
+        case ..<0.76: enter(.read, for: CGFloat.random(in: 6...10))
+        case ..<0.79: enter(.sweep, for: 5)
+        case ..<0.82: enter(.juggle, for: 6)
+        case ..<0.85: enter(.cheer, for: 2.5); say(["Yes!", "We did it!", "✦"].randomElement()!, for: 2)
+        case ..<0.89: enter(.think, for: 3)
+        case ..<(0.94 + sleepBias): enter(.sleep, for: CGFloat.random(in: 10...25))
         default: enter(.idle, for: 4); say(phrases.randomElement()!, for: 3.5)
         }
     }
@@ -662,6 +782,8 @@ final class Pet: NSObject {
             v.eyeDX = Int(v.facing); v.eyeDY = 0
         } else if v.mode == .work {
             v.eyeDX = 0; v.eyeDY = 1
+        } else if v.mode == .read {
+            v.eyeDX = 0; v.eyeDY = 0
         } else if v.mode == .idle || v.mode == .think || v.mode == .wave {
             v.eyeDX = dx > 90 ? 1 : (dx < -90 ? -1 : 0)
             v.eyeDY = dy > 90 ? -1 : (dy < -90 ? 1 : 0)
@@ -797,6 +919,15 @@ final class Pet: NSObject {
         case .sleep:
             v.sleepT += dt
             modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .read:
+            v.eyeDX = 0; v.eyeDY = 0
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .sweep:
+            v.armL = 1; v.facing = -1
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .juggle:
+            v.armL = Int(v.time * 2.2) % 2; v.armR = 1 - v.armL
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
         case .idle, .think:
             modeTime -= dt; if modeTime <= 0 && !airborne { pickBehavior() }
         case .drag:
@@ -899,7 +1030,12 @@ render("dizzy") { $0.eyeStyle = .dizzy; $0.armL = 1 }
 render("think") { $0.speech = "..." }
 render("work")  { $0.mode = .work; $0.armL = 1; $0.eyeDY = 1; $0.speech = "Claude is working…" }
 render("startled") { $0.hop = 10; $0.speech = "!" }
-render("dance") { $0.mode = .dance; $0.eyeStyle = .happy; $0.armL = 1; $0.time = 0.2; $0.speech = "♪ Song — Artist" }
+render("dance") { $0.mode = .dance; $0.eyeStyle = .content; $0.armL = 1; $0.time = 0.2; $0.speech = "♪ Song — Artist" }
+render("work")  { $0.mode = .work; $0.armL = 1; $0.eyeDY = 1; $0.time = 3.2 }
+render("read")  { $0.mode = .read; $0.armL = 1; $0.time = 0.5 }
+render("sweep") { $0.mode = .sweep; $0.armL = 1; $0.facing = -1; $0.time = 0.3 }
+render("juggle") { $0.mode = .juggle; $0.armL = 1; $0.time = 0.9 }
+render("think") { $0.mode = .think; $0.speech = "..." }
 // list the detected windows
 let plats = visiblePlatforms(excluding: 0)
 print("windows:", plats.count)

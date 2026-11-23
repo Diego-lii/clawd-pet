@@ -7,6 +7,7 @@ is working.
 
 ![Clawd states](states-1.png)
 ![More Clawd states](states-2.png)
+![Clawd with props](states-3.png)
 
 This is a fan project. It is not affiliated with or endorsed by Anthropic.
 
@@ -31,6 +32,9 @@ cd clawd-pet
 ./build.sh
 open ClawdPet.app
 ```
+
+`build.sh` compiles `main.swift` and signs the app with an ad-hoc signature, which macOS
+requires to launch it from a launch agent.
 
 Clawd does not show up in the Dock. To quit it, click the `✦` icon in the menu bar
 (top right) and choose **Quit Clawd**, or right-click Clawd itself.
@@ -80,7 +84,8 @@ thinking with "...").
 - Every now and then runs to the top edge of an open window and walks along it.
 - If you move or close the window it is standing on, it falls to the next one (or the
   bottom of the screen). A long fall makes it dizzy.
-- Waves with one arm, celebrates with both arms and sparkles, thinks, sleeps.
+- Waves with one arm, celebrates with both arms and sparkles, thinks with a magnifier, sleeps.
+- Reads a book with round glasses, sweeps the floor with a broom, juggles three balls.
 - Says short phrases in a speech bubble. Its eyes follow the cursor and it blinks.
 
 ## How it reacts to your environment
@@ -90,11 +95,11 @@ thinking with "...").
 | The cursor rushes past it | Gets startled ("!") and runs away |
 | You do not touch the Mac for 2.5 minutes | Falls asleep; wakes up startled when you come back |
 | You switch to Claude, Xcode, VS Code, Terminal, a browser, Slack... | Comments on it |
-| A song is playing in Apple Music or Spotify | Dances and shows the song title; keeps dancing now and then while the music plays |
+| A song is playing in Apple Music or Spotify | Puts on headphones and dances, with the song title; keeps dancing now and then while the music plays |
 | It is late at night | Sleeps more often |
 | On launch | Greets you according to the time of day |
 | Battery below 15 % and not charging | Warns you |
-| Claude Code is working in a session | "Types" with its arms; celebrates when the session goes quiet |
+| Claude Code is working in a session | Sits at a laptop and types, with code appearing on the screen; celebrates when the session goes quiet |
 
 Claude Code detection watches the session logs in `~/.claude/projects`. Nothing is read
 or sent anywhere; only the timestamps of file changes matter. Music detection asks Apple

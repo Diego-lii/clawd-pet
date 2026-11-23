@@ -7,4 +7,5 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
 swiftc -O -swift-version 5 -o "$APP/Contents/MacOS/ClawdPet" main.swift -framework Cocoa
+codesign --force --sign - "$APP" >/dev/null 2>&1 || true
 echo "Built: $(pwd)/$APP"
