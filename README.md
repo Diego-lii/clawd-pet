@@ -73,6 +73,26 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/dev.clawdpet.app.plist
 rm ~/Library/LaunchAgents/dev.clawdpet.app.plist
 ```
 
+## Updating
+
+New versions are published as [releases](https://github.com/Diego-lii/clawd-pet/releases).
+Click **Watch → Custom → Releases** on the repository page to get an email when one comes
+out. To update your copy:
+
+```bash
+cd clawd-pet
+git pull
+./build.sh
+```
+
+Then quit Clawd (menu bar `✦` → Quit Clawd) and open the new `ClawdPet.app`. If you copied
+it to Applications and set it to start at login, replace it and restart the agent:
+
+```bash
+rm -rf ~/Applications/ClawdPet.app && cp -R ClawdPet.app ~/Applications/
+launchctl kickstart -k gui/$(id -u) dev.clawdpet.app
+```
+
 ## What Clawd does on its own
 
 The expressions come from the official `/buddy` system inside Claude Code (open eyes,
