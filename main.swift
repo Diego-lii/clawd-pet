@@ -90,8 +90,31 @@ let spanishText: [String: String] = [
     "Hi!": "¡Hola!",
     "Hi! I'm Clawd": "¡Hola! Soy Clawd",
     "Low battery!": "¡Batería baja!",
+    "Checking for updates…": "Buscando actualizaciones…",
+    "You're up to date": "Estás al día",
+    "Couldn't check for updates": "No pude buscar actualizaciones",
+    "New version": "Nueva versión",
+    "click me to download": "haz clic en mí para descargar",
+    "Check for updates…": "Buscar actualizaciones…",
 ]
 func tr(_ text: String) -> String { spanish ? (spanishText[text] ?? text) : text }
+
+// MARK: - Updates (checks the latest GitHub release)
+let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+let releasesPage = "https://github.com/Diego-lii/clawd-pet/releases/latest"
+let releasesAPI = "https://api.github.com/repos/Diego-lii/clawd-pet/releases/latest"
+
+func versionParts(_ v: String) -> [Int] {
+    v.trimmingCharacters(in: CharacterSet(charactersIn: "vV ")).split(separator: ".").map { Int($0) ?? 0 }
+}
+func isNewer(_ a: String, than b: String) -> Bool {
+    let x = versionParts(a), y = versionParts(b)
+    for i in 0..<max(x.count, y.count) {
+        let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+        if p != q { return p > q }
+    }
+    return false
+}
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
 
@@ -462,6 +485,9 @@ final class Pet: NSObject {
     var musicTrack = ""
     var musicTimer: CGFloat = 2
     var musicQuerying = false
+    var updateTimer: CGFloat = 40          // first silent check 40 s after launch, then daily
+    var updateAvailable: String?           // tag of the newer release, if any
+    var updateClickUntil: TimeInterval = 0 // while set, a click on Clawd opens the download page
 
     var spriteW: CGFloat { PetView.cols * PetView.u }
     var spriteH: CGFloat { PetView.rows * PetView.u }
@@ -709,6 +735,35 @@ final class Pet: NSObject {
         }
     }
 
+    // Asks GitHub for the latest release. `quiet` only speaks when there is a new version.
+    func checkForUpdates(quiet: Bool) {
+        if !quiet { say("Checking for updates…", for: 3) }
+        guard let url = URL(string: releasesAPI) else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            var tag: String? = nil
+            if let d = data, let json = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                tag = json["tag_name"] as? String
+            }
+            DispatchQueue.main.async { self?.updateResult(tag: tag, quiet: quiet) }
+        }.resume()
+    }
+    func updateResult(tag: String?, quiet: Bool) {
+        guard let tag = tag else {
+            if !quiet { say("Couldn't check for updates", for: 3) }
+            return
+        }
+        if isNewer(tag, than: appVersion) {
+            updateAvailable = tag
+            updateClickUntil = Date().timeIntervalSince1970 + 30
+            if view.mode != .sleep && view.mode != .drag && !airborne { enter(.cheer, for: 2.5) }
+            say(tr("New version") + " \(tag): " + tr("click me to download"), for: 8)
+        } else if !quiet {
+            say(tr("You're up to date") + " (v\(appVersion))", for: 3)
+        }
+    }
+
     func userIdleSeconds() -> Double {
         let types: [CGEventType] = [.mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown, .scrollWheel, .leftMouseDragged]
         return types.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min() ?? 0
@@ -812,6 +867,10 @@ final class Pet: NSObject {
             idleSleeping = false
             enter(.startled, for: 0.7); say("Huh?! You're back!", for: 2.5)
         }
+
+        // updates: once at start, then once a day
+        updateTimer -= dt
+        if updateTimer <= 0 { updateTimer = 24 * 3600; checkForUpdates(quiet: true) }
 
         // music
         musicTimer -= dt
@@ -964,6 +1023,12 @@ final class Pet: NSObject {
     }
     func poke(clicks: Int) {
         idleSleeping = false
+        if updateAvailable != nil && Date().timeIntervalSince1970 < updateClickUntil, let url = URL(string: releasesPage) {
+            NSWorkspace.shared.open(url)
+            updateClickUntil = 0
+            enter(.happy, for: 1.5)
+            return
+        }
         if view.mode == .sleep { enter(.idle, for: 3); say("Huh? I'm awake!", for: 2.5); return }
         if clicks >= 2 { enter(.cheer, for: 3); say("Party!", for: 2); return }
         enter(.happy, for: 1.6)
@@ -983,6 +1048,7 @@ final class Pet: NSObject {
         add("Sleep / wake up", #selector(menuSleep))
         add("Come to the center", #selector(menuHome))
         m.addItem(.separator())
+        add("Check for updates…", #selector(menuUpdate))
         add("Quit Clawd", #selector(menuQuit), "q")
         return m
     }
@@ -1000,6 +1066,7 @@ final class Pet: NSObject {
         airborne = false; vy = 0; standing = false
         enter(.idle, for: 3); say("Here I am!", for: 2)
     }
+    @objc func menuUpdate() { checkForUpdates(quiet: false) }
     @objc func menuQuit() { NSApp.terminate(nil) }
 }
 
@@ -1036,6 +1103,7 @@ render("read")  { $0.mode = .read; $0.armL = 1; $0.time = 0.5 }
 render("sweep") { $0.mode = .sweep; $0.armL = 1; $0.facing = -1; $0.time = 0.3 }
 render("juggle") { $0.mode = .juggle; $0.armL = 1; $0.time = 0.9 }
 render("think") { $0.mode = .think; $0.speech = "..." }
+print("version compare:", isNewer("v1.2.0", than: "1.1.0"), isNewer("v1.1.0", than: "1.2.0"), isNewer("v1.2.0", than: "1.2.0"), isNewer("v2.0", than: "1.9.9"))
 // list the detected windows
 let plats = visiblePlatforms(excluding: 0)
 print("windows:", plats.count)

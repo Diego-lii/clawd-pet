@@ -76,8 +76,10 @@ rm ~/Library/LaunchAgents/dev.clawdpet.app.plist
 ## Updating
 
 New versions are published as [releases](https://github.com/Diego-lii/clawd-pet/releases).
-Click **Watch → Custom → Releases** on the repository page to get an email when one comes
-out. To update your copy:
+Clawd checks for a new release once a day (and on demand from the menu: **Check for
+updates…**). When there is one, it says so in a speech bubble; click Clawd within
+30 seconds to open the download page. The check only fetches the latest release tag from
+GitHub and sends nothing about you. To update your copy:
 
 ```bash
 cd clawd-pet
@@ -133,7 +135,7 @@ Music and Spotify through AppleScript, every 3 seconds, only while they are open
 | Double click | Celebrates with sparkles |
 | Click while asleep | Wakes up |
 | Drag and drop | Stays where you drop it (on the edge of a window, it stands on it) |
-| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, quit |
+| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, check for updates, quit |
 | `✦` icon in the menu bar | The same menu |
 
 Only the body catches clicks. The transparent area around it lets clicks through to the
