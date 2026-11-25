@@ -122,10 +122,33 @@ thinking with "...").
 | On launch | Greets you according to the time of day |
 | Battery below 15 % and not charging | Warns you |
 | Claude Code is working in a session | Sits at a laptop and types, with code appearing on the screen; celebrates when the session goes quiet |
+| Claude Code needs your approval, or is waiting for you (alerts on) | Jumps with a red "!" and a sound until you click it or answer Claude |
 
 Claude Code detection watches the session logs in `~/.claude/projects`. Nothing is read
 or sent anywhere; only the timestamps of file changes matter. Music detection asks Apple
 Music and Spotify through AppleScript, every 3 seconds, only while they are open.
+
+## Claude Code alerts
+
+Turn them on from the menu (**Claude Code alerts: turn on**) or from a terminal:
+
+```bash
+~/Applications/ClawdPet.app/Contents/MacOS/ClawdPet --install-hooks
+```
+
+This adds two hooks to `~/.claude/settings.json` (`Notification` for `permission_prompt`
+and `idle_prompt`, and `Stop`), pointing at a six-line shell script in `~/.clawdpet/`. The
+script appends each event to `~/.clawdpet/events.jsonl`, which Clawd reads. Your previous
+settings are backed up once as `settings.json.before-clawdpet`. Everything stays on your Mac.
+
+With the alerts on:
+
+- When Claude Code waits for a permission, Clawd jumps with a red "!" and plays a sound,
+  and repeats the message every 10 seconds. Click Clawd, answer Claude, or wait 3 minutes.
+- When Claude Code has been idle waiting for your input, Clawd tells you.
+- When a Claude Code turn that took a while ends, Clawd celebrates.
+
+Turn them off from the same menu item, or with `--remove-hooks`.
 
 ## Controls
 
@@ -135,7 +158,7 @@ Music and Spotify through AppleScript, every 3 seconds, only while they are open
 | Double click | Celebrates with sparkles |
 | Click while asleep | Wakes up |
 | Drag and drop | Stays where you drop it (on the edge of a window, it stands on it) |
-| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, check for updates, quit |
+| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, Claude Code alerts on/off, check for updates, quit |
 | `✦` icon in the menu bar | The same menu |
 
 Only the body catches clicks. The transparent area around it lets clicks through to the

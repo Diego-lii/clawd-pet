@@ -96,6 +96,14 @@ let spanishText: [String: String] = [
     "New version": "Nueva versión",
     "click me to download": "haz clic en mí para descargar",
     "Check for updates…": "Buscar actualizaciones…",
+    "Claude needs your approval!": "¡Claude necesita tu aprobación!",
+    "Claude is waiting for you": "Claude te está esperando",
+    "On my way!": "¡Voy!",
+    "Claude Code alerts: turn on": "Avisos de Claude Code: activar",
+    "Claude Code alerts: turn off": "Avisos de Claude Code: desactivar",
+    "Alerts on! Claude Code will tell me when it needs you.": "¡Avisos activados! Claude Code me dirá cuando te necesite.",
+    "Alerts off.": "Avisos desactivados.",
+    "Couldn't set up the alerts": "No pude activar los avisos",
 ]
 func tr(_ text: String) -> String { spanish ? (spanishText[text] ?? text) : text }
 
@@ -116,6 +124,74 @@ func isNewer(_ a: String, than b: String) -> Bool {
     return false
 }
 
+// MARK: - Claude Code hooks (so Clawd knows when Claude needs you)
+//
+// A tiny shell script is registered as a Claude Code hook. Every event it receives is
+// appended to ~/.clawdpet/events.jsonl, and Clawd reads that file.
+let clawdDir = NSHomeDirectory() + "/.clawdpet"
+let eventsFile = clawdDir + "/events.jsonl"
+let hookScript = clawdDir + "/hook.sh"
+let claudeSettings = NSHomeDirectory() + "/.claude/settings.json"
+let hookScriptSource = """
+#!/bin/sh
+# Installed by Clawd Pet. Claude Code runs this on some events; the event JSON arrives on stdin.
+# It is appended to a file that Clawd Pet watches. Nothing leaves your Mac.
+mkdir -p "$HOME/.clawdpet"
+cat >> "$HOME/.clawdpet/events.jsonl"
+printf '\\n' >> "$HOME/.clawdpet/events.jsonl"
+exit 0
+"""
+let hookEvents: [(event: String, matcher: String?)] = [("Notification", "permission_prompt|idle_prompt"), ("Stop", nil)]
+
+func readSettings() -> [String: Any] {
+    guard let d = FileManager.default.contents(atPath: claudeSettings),
+          let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [:] }
+    return j
+}
+func writeSettings(_ j: [String: Any]) throws {
+    let d = try JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    try FileManager.default.createDirectory(atPath: (claudeSettings as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    try d.write(to: URL(fileURLWithPath: claudeSettings))
+}
+func entryIsOurs(_ e: [String: Any]) -> Bool {
+    ((e["hooks"] as? [[String: Any]]) ?? []).contains { ($0["command"] as? String) == hookScript }
+}
+func hooksInstalled() -> Bool {
+    let hooks = readSettings()["hooks"] as? [String: Any] ?? [:]
+    let list = hooks["Notification"] as? [[String: Any]] ?? []
+    return list.contains(where: entryIsOurs) && FileManager.default.isExecutableFile(atPath: hookScript)
+}
+func installHooks() throws {
+    try FileManager.default.createDirectory(atPath: clawdDir, withIntermediateDirectories: true)
+    try hookScriptSource.write(toFile: hookScript, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hookScript)
+    var settings = readSettings()
+    if FileManager.default.fileExists(atPath: claudeSettings) && !FileManager.default.fileExists(atPath: claudeSettings + ".before-clawdpet") {
+        try? FileManager.default.copyItem(atPath: claudeSettings, toPath: claudeSettings + ".before-clawdpet")
+    }
+    var hooks = settings["hooks"] as? [String: Any] ?? [:]
+    for h in hookEvents {
+        var list = (hooks[h.event] as? [[String: Any]] ?? []).filter { !entryIsOurs($0) }
+        var entry: [String: Any] = ["hooks": [["type": "command", "command": hookScript]]]
+        if let m = h.matcher { entry["matcher"] = m }
+        list.append(entry)
+        hooks[h.event] = list
+    }
+    settings["hooks"] = hooks
+    try writeSettings(settings)
+}
+func removeHooks() throws {
+    var settings = readSettings()
+    var hooks = settings["hooks"] as? [String: Any] ?? [:]
+    for h in hookEvents {
+        let list = (hooks[h.event] as? [[String: Any]] ?? []).filter { !entryIsOurs($0) }
+        if list.isEmpty { hooks.removeValue(forKey: h.event) } else { hooks[h.event] = list }
+    }
+    if hooks.isEmpty { settings.removeValue(forKey: "hooks") } else { settings["hooks"] = hooks }
+    try writeSettings(settings)
+    try? FileManager.default.removeItem(atPath: hookScript)
+}
+
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
 
 let phrases = [
@@ -126,7 +202,7 @@ let phrases = [
 ]
 let clickPhrases = ["Hey!", "Haha!", "Yes?", "Here I am!", "Wheee!", "Again!"]
 
-enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance, read, sweep, juggle }
+enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance, read, sweep, juggle, alert }
 enum EyeStyle { case open, closed, wink, happy, dizzy, content }
 
 // MARK: - Drawing Clawd
@@ -224,7 +300,7 @@ final class PetView: NSView {
         if sleeping { drawZs() }
         if let t = speech {
             var extra: CGFloat = armL + armR > 0 ? u : 0
-            if mode == .work { extra = 8.5 * u } else if mode == .dance { extra = 1.5 * u } else if mode == .juggle { extra = 5.5 * u }
+            if mode == .work { extra = 8.5 * u } else if mode == .dance { extra = 1.5 * u } else if mode == .juggle { extra = 5.5 * u } else if mode == .alert { extra = 3.5 * u }
             drawBubble(t, topY: spriteTop + extra + 6, tailX: spriteCenterX)
         }
     }
@@ -346,6 +422,12 @@ final class PetView: NSView {
                 let x = 0.5 + 10 * t, y = 2.5 - 5 * sin(t * .pi)
                 let c = cell(x, y)
                 fill(NSRect(x: c.midX - u * 0.5, y: c.midY - u * 0.5, width: u, height: u), colors[i])
+            }
+        case .alert:
+            // blinking red "!" above the head
+            if Int(time * 4) % 2 == 0 {
+                fill(cell(5, -3.2, 1, 1.9), ballRed)
+                fill(cell(5, -1.0, 1, 0.8), ballRed)
             }
         case .think:
             // magnifier over the right eye (the eye looks bigger through it)
@@ -488,6 +570,11 @@ final class Pet: NSObject {
     var updateTimer: CGFloat = 40          // first silent check 40 s after launch, then daily
     var updateAvailable: String?           // tag of the newer release, if any
     var updateClickUntil: TimeInterval = 0 // while set, a click on Clawd opens the download page
+    var eventsOffset: UInt64 = 0           // how much of events.jsonl has been read
+    var eventsTimer: CGFloat = 0
+    var alertStart: TimeInterval = 0
+    var alertMessage = ""
+    var alertRepeat: CGFloat = 0
 
     var spriteW: CGFloat { PetView.cols * PetView.u }
     var spriteH: CGFloat { PetView.rows * PetView.u }
@@ -543,6 +630,7 @@ final class Pet: NSObject {
         RunLoop.main.add(t, forMode: .common)
         timer = t
         platforms = visiblePlatforms(excluding: window.windowNumber)
+        if let a = try? FileManager.default.attributesOfItem(atPath: eventsFile), let n = (a[.size] as? NSNumber)?.uint64Value { eventsOffset = n }
         startWave(greeting())
     }
 
@@ -598,6 +686,7 @@ final class Pet: NSObject {
         case .think: say("...", for: secs)
         case .startled: v.hopVel = 170
         case .dance: v.eyeStyle = .content
+        case .alert: v.armL = 1; v.armR = 1
         case .read: v.armL = 1
         default: break
         }
@@ -764,6 +853,54 @@ final class Pet: NSObject {
         }
     }
 
+    // Reads new lines appended to the events file by the Claude Code hook.
+    func readClaudeEvents() {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: eventsFile),
+              let size = (attrs[.size] as? NSNumber)?.uint64Value else { return }
+        if size < eventsOffset { eventsOffset = 0 }
+        guard size > eventsOffset, let fh = FileHandle(forReadingAtPath: eventsFile) else { return }
+        defer { try? fh.close() }
+        fh.seek(toFileOffset: eventsOffset)
+        let data = fh.readDataToEndOfFile()
+        eventsOffset = size
+        if size > 1_000_000 { try? "".write(toFile: eventsFile, atomically: true, encoding: .utf8); eventsOffset = 0 }
+        guard let text = String(data: data, encoding: .utf8) else { return }
+        for line in text.split(separator: "\n") {
+            guard let d = line.data(using: .utf8),
+                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+            handleClaudeEvent(j)
+        }
+    }
+    func handleClaudeEvent(_ e: [String: Any]) {
+        let name = e["hook_event_name"] as? String ?? ""
+        let type = e["notification_type"] as? String ?? ""
+        switch (name, type) {
+        case ("Notification", "permission_prompt"): startAlert("Claude needs your approval!")
+        case ("Notification", "idle_prompt"): startAlert("Claude is waiting for you")
+        case ("Stop", _):
+            if view.mode == .alert { stopAlert() }
+            let worked = Date().timeIntervalSince1970 - claudeWorkStart
+            claudeActiveUntil = 0
+            if worked > 12 && view.mode != .sleep && view.mode != .drag && !airborne && view.mode != .alert { enter(.cheer, for: 2.5); say("Done! ✦", for: 2.5) }
+            else if view.mode == .work { enter(.idle, for: 2) }
+        default: break
+        }
+    }
+    func startAlert(_ message: String) {
+        guard !dragging else { return }
+        alertStart = Date().timeIntervalSince1970
+        alertMessage = message
+        alertRepeat = 10
+        idleSleeping = false
+        enter(.alert, for: 180)
+        say(message, for: 5)
+        NSSound(named: "Pop")?.play()
+    }
+    func stopAlert() {
+        if view.mode == .alert { enter(.idle, for: 2) }
+        alertMessage = ""
+    }
+
     func userIdleSeconds() -> Double {
         let types: [CGEventType] = [.mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown, .scrollWheel, .leftMouseDragged]
         return types.map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }.min() ?? 0
@@ -863,10 +1000,14 @@ final class Pet: NSObject {
         let idle = userIdleSeconds()
         if !idleSleeping && idle > 150 && !dragging && !airborne && v.mode != .sleep {
             idleSleeping = true; enter(.sleep, for: 9999)
-        } else if idleSleeping && idle < 1.5 {
+        } else if idleSleeping && idle < 1.5 && v.mode != .alert {
             idleSleeping = false
             enter(.startled, for: 0.7); say("Huh?! You're back!", for: 2.5)
         }
+
+        // Claude Code events (permission prompts, waiting, done)
+        eventsTimer -= dt
+        if eventsTimer <= 0 { eventsTimer = 0.5; readClaudeEvents() }
 
         // updates: once at start, then once a day
         updateTimer -= dt
@@ -890,7 +1031,8 @@ final class Pet: NSObject {
         }
 
         // Claude Code is working
-        if claudeActive && !dragging && !airborne && v.mode != .sleep && v.mode != .drag && v.mode != .startled {
+        if v.mode == .alert && claudeActive && Date().timeIntervalSince1970 - alertStart > 4 && claudeActiveUntil - 7 > alertStart + 3 { stopAlert() }
+        if claudeActive && !dragging && !airborne && v.mode != .sleep && v.mode != .drag && v.mode != .startled && v.mode != .alert {
             if v.mode != .work {
                 enter(.work, for: 9999)
                 if !claudeAnnounced { claudeAnnounced = true; say(["Claude is working…", "Let's do this!", "Typing…"].randomElement()!, for: 3) }
@@ -961,6 +1103,11 @@ final class Pet: NSObject {
             v.armL = Int(v.time * 3.5) % 2; v.armR = 1 - v.armL
             if v.hop == 0 && v.hopVel == 0 { v.hopVel = 110 }
             modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .alert:
+            if v.hop == 0 && v.hopVel == 0 { v.hopVel = 170 }
+            alertRepeat -= dt
+            if alertRepeat <= 0 { alertRepeat = 10; say(alertMessage, for: 4) }
+            modeTime -= dt; if modeTime <= 0 { stopAlert() }
         case .wave:
             v.armR = Int(v.time * 4) % 2
             modeTime -= dt; if modeTime <= 0 { pickBehavior() }
@@ -1023,6 +1170,7 @@ final class Pet: NSObject {
     }
     func poke(clicks: Int) {
         idleSleeping = false
+        if view.mode == .alert { stopAlert(); say("On my way!", for: 1.5); return }
         if updateAvailable != nil && Date().timeIntervalSince1970 < updateClickUntil, let url = URL(string: releasesPage) {
             NSWorkspace.shared.open(url)
             updateClickUntil = 0
@@ -1048,6 +1196,7 @@ final class Pet: NSObject {
         add("Sleep / wake up", #selector(menuSleep))
         add("Come to the center", #selector(menuHome))
         m.addItem(.separator())
+        add(hooksInstalled() ? "Claude Code alerts: turn off" : "Claude Code alerts: turn on", #selector(menuHooks))
         add("Check for updates…", #selector(menuUpdate))
         add("Quit Clawd", #selector(menuQuit), "q")
         return m
@@ -1065,6 +1214,13 @@ final class Pet: NSObject {
         pos = CGPoint(x: f.midX - view.spriteCenterX, y: f.midY); place()
         airborne = false; vy = 0; standing = false
         enter(.idle, for: 3); say("Here I am!", for: 2)
+    }
+    @objc func menuHooks() {
+        do {
+            if hooksInstalled() { try removeHooks(); say("Alerts off.", for: 3) }
+            else { try installHooks(); enter(.cheer, for: 2.5); say("Alerts on! Claude Code will tell me when it needs you.", for: 5) }
+        } catch { say("Couldn't set up the alerts", for: 3) }
+        statusItem?.menu = makeMenu()
     }
     @objc func menuUpdate() { checkForUpdates(quiet: false) }
     @objc func menuQuit() { NSApp.terminate(nil) }
@@ -1103,12 +1259,15 @@ render("read")  { $0.mode = .read; $0.armL = 1; $0.time = 0.5 }
 render("sweep") { $0.mode = .sweep; $0.armL = 1; $0.facing = -1; $0.time = 0.3 }
 render("juggle") { $0.mode = .juggle; $0.armL = 1; $0.time = 0.9 }
 render("think") { $0.mode = .think; $0.speech = "..." }
+render("alert") { $0.mode = .alert; $0.armL = 1; $0.armR = 1; $0.hop = 8; $0.time = 0.1; $0.speech = "Claude needs your approval!" }
 print("version compare:", isNewer("v1.2.0", than: "1.1.0"), isNewer("v1.1.0", than: "1.2.0"), isNewer("v1.2.0", than: "1.2.0"), isNewer("v2.0", than: "1.9.9"))
 // list the detected windows
 let plats = visiblePlatforms(excluding: 0)
 print("windows:", plats.count)
 for p in plats.prefix(12) { print(String(format: "  %@  x %.0f…%.0f  top %.0f  h %.0f", p.owner, p.rect.minX, p.rect.maxX, p.top, p.rect.height)) }
 #else
+if CommandLine.arguments.contains("--install-hooks") { try installHooks(); print("Claude Code hooks installed in \(claudeSettings)"); exit(0) }
+if CommandLine.arguments.contains("--remove-hooks") { try removeHooks(); print("Claude Code hooks removed from \(claudeSettings)"); exit(0) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()
