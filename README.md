@@ -8,6 +8,7 @@ is working.
 ![Clawd states](states-1.png)
 ![More Clawd states](states-2.png)
 ![Clawd with props](states-3.png)
+![Hats, box, hearts and alert](states-4.png)
 
 This is a fan project. It is not affiliated with or endorsed by Anthropic.
 
@@ -108,6 +109,10 @@ thinking with "...").
   bottom of the screen). A long fall makes it dizzy.
 - Waves with one arm, celebrates with both arms and sparkles, thinks with a magnifier, sleeps.
 - Reads a book with round glasses, sweeps the floor with a broom, juggles three balls.
+- Hides behind a screen edge and peeks back in ("Peekaboo!").
+- Carries a cardboard box when it runs to a window.
+- Wears a hat if you pick one from the menu: hard hat (and it hammers things now and then),
+  party hat, Santa hat or sunglasses. "Automatic" means a Santa hat in December only.
 - Says short phrases in a speech bubble. Its eyes follow the cursor and it blinks.
 
 ## How it reacts to your environment
@@ -115,6 +120,9 @@ thinking with "...").
 | Situation | Reaction |
 |---|---|
 | The cursor rushes past it | Gets startled ("!") and runs away |
+| The cursor rests on it for a second | Gets petted: closes its eyes and little hearts float up |
+| The cursor stays still nearby for a while | Walks over to take a look ("Hmm?") |
+| You drag it around very fast | Gets dizzy |
 | You do not touch the Mac for 2.5 minutes | Falls asleep; wakes up startled when you come back |
 | You switch to Claude, Xcode, VS Code, Terminal, a browser, Slack... | Comments on it |
 | A song is playing in Apple Music or Spotify | Puts on headphones and dances, with the song title; keeps dancing now and then while the music plays |
@@ -127,6 +135,17 @@ thinking with "...").
 Claude Code detection watches the session logs in `~/.claude/projects`. Nothing is read
 or sent anywhere; only the timestamps of file changes matter. Music detection asks Apple
 Music and Spotify through AppleScript, every 3 seconds, only while they are open.
+
+## Do not disturb, sounds and hats
+
+- **Do not disturb** (menu): Clawd walks to the bottom-right corner and stays quiet: no
+  wandering, no speech bubbles, no sounds. Claude Code alerts only show the red "!" badge.
+  Useful while presenting or recording the screen.
+- **Sounds** (menu): short system sounds when you click it, when it lands, celebrates or
+  alerts you. Off with one click.
+- **Hat** (menu): automatic, none, hard hat, party hat, Santa hat or sunglasses.
+
+These choices are remembered between launches.
 
 ## Claude Code alerts
 
@@ -158,7 +177,7 @@ Turn them off from the same menu item, or with `--remove-hooks`.
 | Double click | Celebrates with sparkles |
 | Click while asleep | Wakes up |
 | Drag and drop | Stays where you drop it (on the edge of a window, it stands on it) |
-| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, Claude Code alerts on/off, check for updates, quit |
+| Right click | Menu: wave, say something, go to a window, celebrate, sleep / wake up, come to the center, do not disturb, hat, sounds, Claude Code alerts on/off, check for updates, quit |
 | `✦` icon in the menu bar | The same menu |
 
 Only the body catches clicks. The transparent area around it lets clicks through to the

@@ -23,6 +23,15 @@ let broomStraw = NSColor(srgbRed: 0.93, green: 0.72, blue: 0.25, alpha: 1)
 let lensFill   = NSColor(srgbRed: 0.62, green: 0.70, blue: 0.78, alpha: 0.85)
 let lensEdge   = NSColor(srgbRed: 0.43, green: 0.52, blue: 0.60, alpha: 1)
 let ballRed    = NSColor(srgbRed: 0.90, green: 0.35, blue: 0.30, alpha: 1)
+let hatYellow  = NSColor(srgbRed: 0.95, green: 0.72, blue: 0.25, alpha: 1)
+let hatYellowD = NSColor(srgbRed: 0.80, green: 0.58, blue: 0.15, alpha: 1)
+let santaRed   = NSColor(srgbRed: 0.82, green: 0.18, blue: 0.20, alpha: 1)
+let partyPink  = NSColor(srgbRed: 0.93, green: 0.40, blue: 0.65, alpha: 1)
+let partyTeal  = NSColor(srgbRed: 0.25, green: 0.75, blue: 0.75, alpha: 1)
+let boxBrown   = NSColor(srgbRed: 0.76, green: 0.58, blue: 0.38, alpha: 1)
+let boxTape    = NSColor(srgbRed: 0.62, green: 0.44, blue: 0.26, alpha: 1)
+let heartPink  = NSColor(srgbRed: 0.95, green: 0.40, blue: 0.50, alpha: 1)
+let steel      = NSColor(srgbRed: 0.55, green: 0.58, blue: 0.62, alpha: 1)
 
 
 // MARK: - Language (English by default, Spanish when the Mac is set to Spanish)
@@ -104,6 +113,21 @@ let spanishText: [String: String] = [
     "Alerts on! Claude Code will tell me when it needs you.": "¡Avisos activados! Claude Code me dirá cuando te necesite.",
     "Alerts off.": "Avisos desactivados.",
     "Couldn't set up the alerts": "No pude activar los avisos",
+    "Do not disturb: turn on": "No molestar: activar",
+    "Do not disturb: turn off": "No molestar: desactivar",
+    "Sounds: turn off": "Sonidos: desactivar",
+    "Sounds: turn on": "Sonidos: activar",
+    "Hat": "Sombrero",
+    "Automatic (Santa hat in December)": "Automático (gorro de Navidad en diciembre)",
+    "No hat": "Sin sombrero",
+    "Hard hat": "Casco de obra",
+    "Party hat": "Gorro de fiesta",
+    "Santa hat": "Gorro de Navidad",
+    "Sunglasses": "Gafas de sol",
+    "Quiet mode. I'll wait here.": "Modo silencio. Espero aquí.",
+    "I'm back!": "¡Ya volví!",
+    "Hmm?": "¿Mmm?",
+    "Peekaboo!": "¡Cucú!",
 ]
 func tr(_ text: String) -> String { spanish ? (spanishText[text] ?? text) : text }
 
@@ -202,7 +226,24 @@ let phrases = [
 ]
 let clickPhrases = ["Hey!", "Haha!", "Yes?", "Here I am!", "Wheee!", "Again!"]
 
-enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance, read, sweep, juggle, alert }
+enum Mode { case idle, walk, run, sleep, wave, cheer, think, happy, dizzy, drag, work, startled, dance, read, sweep, juggle, alert, peek, petted, build, quiet }
+enum Hat: String, CaseIterable { case auto, none, hardHat, party, santa, sunglasses }
+
+// MARK: - Preferences (saved between launches)
+let prefs = UserDefaults.standard
+var hatPref: Hat { Hat(rawValue: prefs.string(forKey: "hat") ?? "auto") ?? .auto }
+var soundsOn: Bool { prefs.object(forKey: "sounds") == nil ? true : prefs.bool(forKey: "sounds") }
+var quietMode: Bool { prefs.bool(forKey: "quiet") }
+// The hat actually worn: "auto" means a Santa hat in December and nothing otherwise.
+func currentHat() -> Hat {
+    if hatPref != .auto { return hatPref }
+    return Calendar.current.component(.month, from: Date()) == 12 ? .santa : .none
+}
+func playSound(_ name: String) {
+    guard soundsOn, let snd = NSSound(named: NSSound.Name(name)) else { return }
+    snd.volume = 0.35
+    snd.play()
+}
 enum EyeStyle { case open, closed, wink, happy, dizzy, content }
 
 // MARK: - Drawing Clawd
@@ -244,6 +285,9 @@ final class PetView: NSView {
     var speech: String?
     var speechTime: CGFloat = 0
     var sleepT: CGFloat = 0
+    var carrying = false
+    var heartT: CGFloat = 0
+    var hat: Hat = .none
 
     var spriteCenterX: CGFloat { ox + PetView.cols * PetView.u / 2 }
     var spriteTop: CGFloat { oy + PetView.rows * PetView.u + hop }
@@ -294,13 +338,16 @@ final class PetView: NSView {
         // eyes (hidden while turning)
         if turnScale > 0.45 { drawEyes() }
         drawProps()
+        drawHat()
         ctx.restoreGState()
+        if heartT > 0 { drawHearts() }
 
         if sparkleT > 0 { drawSparkles() }
         if sleeping { drawZs() }
         if let t = speech {
             var extra: CGFloat = armL + armR > 0 ? u : 0
             if mode == .work { extra = 8.5 * u } else if mode == .dance { extra = 1.5 * u } else if mode == .juggle { extra = 5.5 * u } else if mode == .alert { extra = 3.5 * u }
+            switch hat { case .hardHat: extra = max(extra, 2.2 * u); case .party: extra = max(extra, 4.5 * u); case .santa: extra = max(extra, 4.5 * u); default: break }
             drawBubble(t, topY: spriteTop + extra + 6, tailX: spriteCenterX)
         }
     }
@@ -423,12 +470,28 @@ final class PetView: NSView {
                 let c = cell(x, y)
                 fill(NSRect(x: c.midX - u * 0.5, y: c.midY - u * 0.5, width: u, height: u), colors[i])
             }
-        case .alert:
+        case .alert where true, .quiet where pet?.alertMessage.isEmpty == false:
             // blinking red "!" above the head
             if Int(time * 4) % 2 == 0 {
                 fill(cell(5, -3.2, 1, 1.9), ballRed)
                 fill(cell(5, -1.0, 1, 0.8), ballRed)
             }
+        case .build:
+            // hammer swinging in the right arm
+            let swing = max(0, sin(time * 5))
+            let hand = CGPoint(x: cell(10.5, 2.5).midX, y: cell(10.5, 2.5).midY)
+            let a: CGFloat = -0.3 - swing * 1.4
+            let len = 3.2 * u
+            let head = CGPoint(x: hand.x + cos(a) * len, y: hand.y + sin(a) * len)
+            let h = NSBezierPath(); h.move(to: hand); h.line(to: head)
+            h.lineWidth = u * 0.45; h.lineCapStyle = .round; broomWood.setStroke(); h.stroke()
+            fill(NSRect(x: head.x - u * 0.9, y: head.y - u * 0.55, width: u * 1.8, height: u * 1.1), steel)
+            if swing > 0.97 { fill(cell(12.5, 4.5, 0.5, 0.5), codeYellow); fill(cell(13.3, 3.8, 0.4, 0.4), codeYellow) }
+        case .run where carrying:
+            // cardboard box carried in front
+            fill(cell(2.5, 3, 6, 2.8), boxBrown)
+            fill(cell(5.2, 3, 0.6, 2.8), boxTape)
+            fill(cell(2.5, 3.8, 6, 0.3), boxTape)
         case .think:
             // magnifier over the right eye (the eye looks bigger through it)
             let r = cell(7.4, 1.4, 2.2, 2.2)
@@ -440,6 +503,48 @@ final class PetView: NSView {
             let hd = NSBezierPath(); hd.move(to: CGPoint(x: r.maxX - 2, y: r.minY + 2)); hd.line(to: CGPoint(x: r.maxX + u * 0.8, y: r.minY - u * 0.8))
             hd.lineWidth = u * 0.45; hd.lineCapStyle = .round; broomWood.setStroke(); hd.stroke()
         default: break
+        }
+    }
+
+    func drawHat() {
+        let u = PetView.u
+        switch hat {
+        case .hardHat:
+            fill(cell(1.5, -1, 8, 1), hatYellow)
+            fill(cell(2.5, -2, 6, 1), hatYellow)
+            fill(cell(0.5, -0.5, 10, 0.5), hatYellowD)
+            fill(cell(5.2, -1.8, 0.6, 1.5), hatYellowD); fill(cell(4.6, -1.4, 1.8, 0.5), hatYellowD)
+        case .party:
+            let p = NSBezierPath()
+            let base = cell(3.5, -0.2, 4, 0.2)
+            p.move(to: CGPoint(x: base.minX, y: base.maxY)); p.line(to: CGPoint(x: base.maxX, y: base.maxY)); p.line(to: CGPoint(x: base.midX, y: base.maxY + 4 * u)); p.close()
+            partyPink.setFill(); p.fill()
+            for i in 0..<3 { fill(cell(4.3 + CGFloat(i) * 0.35, -0.9 - CGFloat(i) * 1.0, 2.4 - CGFloat(i) * 0.7, 0.35), partyTeal) }
+            fill(NSRect(x: base.midX - u * 0.45, y: base.maxY + 4 * u - u * 0.3, width: u * 0.9, height: u * 0.9), codeYellow)
+        case .santa:
+            fill(cell(1, -1, 9, 1), santaRed)
+            fill(cell(2, -2, 6.5, 1), santaRed)
+            fill(cell(3, -3, 4, 1), santaRed)
+            fill(cell(4, -3.8, 2.5, 0.9), santaRed)
+            fill(cell(0.5, -0.6, 10, 0.7), cream)
+            fill(cell(6.3, -4.3, 1.1, 1.1), cream)
+        case .sunglasses:
+            fill(cell(1.3, 1.7, 3, 1.5), ink); fill(cell(6.7, 1.7, 3, 1.5), ink)
+            fill(cell(4.3, 2.0, 2.4, 0.4), ink)
+            fill(cell(1.7, 1.95, 0.7, 0.35), steel); fill(cell(7.1, 1.95, 0.7, 0.35), steel)
+        case .none, .auto: break
+        }
+    }
+
+    func drawHearts() {
+        for i in 0..<3 {
+            let ph = (time * 0.7 + CGFloat(i) * 0.33).truncatingRemainder(dividingBy: 1)
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 8 + ph * 7, weight: .bold),
+                .foregroundColor: heartPink.withAlphaComponent(min(1, heartT) * (1 - ph))]
+            let side: CGFloat = i == 1 ? 0 : (i == 0 ? -1 : 1)
+            NSAttributedString(string: "♥", attributes: attrs)
+                .draw(at: CGPoint(x: spriteCenterX + side * (3.5 * PetView.u + ph * 8) - 4, y: oy + 7 * PetView.u + hop + ph * 30))
         }
     }
 
@@ -499,6 +604,11 @@ final class PetView: NSView {
         guard let menu = pet?.makeMenu() else { return }
         NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
+}
+
+// A borderless window that macOS does not push back on screen (Clawd hides behind the edge when peeking).
+final class PetWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 // MARK: - Open windows (Clawd can walk on top of them)
@@ -575,6 +685,14 @@ final class Pet: NSObject {
     var alertStart: TimeInterval = 0
     var alertMessage = ""
     var alertRepeat: CGFloat = 0
+    var peekPhase = 0                      // 0 leaving, 1 hidden, 2 peeking, 3 coming back
+    var peekSide: CGFloat = 1
+    var hoverStill: CGFloat = 0            // seconds the cursor has rested on Clawd
+    var petCooldown: CGFloat = 0
+    var stillMouse: CGFloat = 0            // seconds the cursor has not moved
+    var curiosityCooldown: CGFloat = 30
+    var curious = false
+    var dragMaxSpeed: CGFloat = 0
 
     var spriteW: CGFloat { PetView.cols * PetView.u }
     var spriteH: CGFloat { PetView.rows * PetView.u }
@@ -598,7 +716,7 @@ final class Pet: NSObject {
     }
 
     override init() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: PetView.w, height: PetView.h),
+        window = PetWindow(contentRect: NSRect(x: 0, y: 0, width: PetView.w, height: PetView.h),
                           styleMask: [.borderless], backing: .buffered, defer: false)
         super.init()
         window.isOpaque = false
@@ -677,7 +795,7 @@ final class Pet: NSObject {
     func enter(_ m: Mode, for secs: CGFloat) {
         let v = view
         v.mode = m; modeTime = secs
-        v.walking = false; v.armL = 0; v.armR = 0; v.eyeStyle = .open
+        v.walking = false; v.armL = 0; v.armR = 0; v.eyeStyle = .open; v.carrying = false
         switch m {
         case .sleep: v.sleepT = 0; v.speech = nil
         case .cheer: v.armL = 1; v.armR = 1; v.sparkleT = secs
@@ -687,6 +805,9 @@ final class Pet: NSObject {
         case .startled: v.hopVel = 170
         case .dance: v.eyeStyle = .content
         case .alert: v.armL = 1; v.armR = 1
+        case .petted: v.eyeStyle = .content; v.heartT = secs
+        case .build: v.armR = 1
+        case .quiet: v.speech = nil
         case .read: v.armL = 1
         default: break
         }
@@ -705,6 +826,7 @@ final class Pet: NSObject {
 
     func pickBehavior() {
         if airborne { return }
+        if quietMode { enter(.quiet, for: 0); return }
         let r = Double.random(in: 0..<1)
         let sleepBias = isNight ? 0.12 : 0.0
         let onPlatform = standing && standingOn != "floor"
@@ -721,7 +843,9 @@ final class Pet: NSObject {
             // walk along the window it is standing on
             let range = walkableRange(aroundX: centerX)
             startWalk(toX: CGFloat.random(in: range))
-        case ..<0.72: startWave(Bool.random() ? "Hi!" : nil)
+        case ..<0.70: startWave(Bool.random() ? "Hi!" : nil)
+        case ..<0.72 where view.hat == .hardHat: enter(.build, for: 5)
+        case ..<0.735: startPeek()
         case ..<0.76: enter(.read, for: CGFloat.random(in: 6...10))
         case ..<0.79: enter(.sweep, for: 5)
         case ..<0.82: enter(.juggle, for: 6)
@@ -730,6 +854,16 @@ final class Pet: NSObject {
         case ..<(0.94 + sleepBias): enter(.sleep, for: CGFloat.random(in: 10...25))
         default: enter(.idle, for: 4); say(phrases.randomElement()!, for: 3.5)
         }
+    }
+
+    // Hide behind the nearest screen edge, then peek back in.
+    func startPeek() {
+        let f = screen.visibleFrame
+        peekSide = centerX < f.midX ? -1 : 1
+        peekPhase = 0
+        let hiddenX = peekSide < 0 ? f.minX - view.ox - spriteW - 4 : f.maxX - view.ox + 4
+        walkTarget = CGPoint(x: hiddenX, y: pos.y)
+        enter(.peek, for: 30)
     }
 
     // Run to the top edge of a window.
@@ -750,6 +884,7 @@ final class Pet: NSObject {
         }
         let sp = spots.randomElement()!
         startWalk(to: CGPoint(x: sp.x - view.spriteCenterX, y: sp.y - view.oy), run: true)
+        view.carrying = true
     }
 
     // MARK: Environment reactions
@@ -815,7 +950,7 @@ final class Pet: NSObject {
         musicPlaying = playing
         musicTrack = track
         let v = view
-        let busy = dragging || airborne || v.mode == .sleep || v.mode == .drag || v.mode == .work || v.mode == .startled
+        let busy = dragging || airborne || v.mode == .sleep || v.mode == .drag || v.mode == .work || v.mode == .startled || v.mode == .quiet || v.mode == .peek || v.mode == .alert
         if changed && !busy {
             enter(.dance, for: 8)
             say("♪ " + track, for: 4)
@@ -888,16 +1023,17 @@ final class Pet: NSObject {
     }
     func startAlert(_ message: String) {
         guard !dragging else { return }
+        if quietMode { alertMessage = message; alertStart = Date().timeIntervalSince1970; return }
         alertStart = Date().timeIntervalSince1970
         alertMessage = message
         alertRepeat = 10
         idleSleeping = false
         enter(.alert, for: 180)
         say(message, for: 5)
-        NSSound(named: "Pop")?.play()
+        playSound("Pop")
     }
     func stopAlert() {
-        if view.mode == .alert { enter(.idle, for: 2) }
+        if view.mode == .alert { enter(quietMode ? .quiet : .idle, for: 2) }
         alertMessage = ""
     }
 
@@ -907,7 +1043,7 @@ final class Pet: NSObject {
     }
 
     @objc func appActivated(_ n: Notification) {
-        guard appCommentCooldown <= 0, !dragging, view.mode != .sleep,
+        guard appCommentCooldown <= 0, !dragging, view.mode != .sleep, view.mode != .quiet, view.mode != .peek, view.mode != .alert,
               let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
               let name = app.localizedName else { return }
@@ -981,29 +1117,52 @@ final class Pet: NSObject {
             v.eyeDY = dy > 90 ? -1 : (dy < -90 ? 1 : 0)
         } else { v.eyeDX = 0; v.eyeDY = 0 }
         if !dragging && !airborne && startleCooldown == 0 && hypot(dx, dy) < 70 && mouseSpeed > 1800
-            && v.mode != .sleep && v.mode != .drag {
+            && v.mode != .sleep && v.mode != .drag && v.mode != .quiet && v.mode != .peek {
             startleCooldown = 6
             enter(.startled, for: 0.6)
             say("!", for: 0.8)
+            playSound("Pop")
             // run away from the cursor
             let len = max(hypot(dx, dy), 1)
             let b = originBounds(screen)
             walkTarget = CGPoint(x: clamp(pos.x - dx / len * 200, b.minX, b.maxX),
                                  y: clamp(pos.y - dy / len * 120, b.minY, b.maxY))
         }
+        let overBody = v.hitRect.offsetBy(dx: pos.x, dy: pos.y).contains(mouse)
         if !dragging {
-            let over = v.hitRect.offsetBy(dx: pos.x, dy: pos.y).contains(mouse)
-            if window.ignoresMouseEvents == over { window.ignoresMouseEvents = !over }
+            if window.ignoresMouseEvents == overBody { window.ignoresMouseEvents = !overBody }
+        }
+        // petting: the cursor resting on Clawd for a moment
+        let calm: Set<Mode> = [.idle, .think, .wave, .read, .quiet]
+        hoverStill = (overBody && mouseSpeed < 25) ? hoverStill + dt : 0
+        if hoverStill > 1.2 && petCooldown == 0 && calm.contains(v.mode) && !dragging {
+            petCooldown = 12; hoverStill = 0
+            if v.mode == .quiet { v.heartT = 2.5 } else { enter(.petted, for: 2.5); playSound("Tink") }
+        }
+        // curiosity: the cursor has been still nearby for a while
+        stillMouse = mouseSpeed < 5 ? stillMouse + dt : 0
+        let near = hypot(dx, dy)
+        if stillMouse > 6 && near > 90 && near < 420 && curiosityCooldown == 0 && !overBody && (v.mode == .idle || v.mode == .walk) {
+            curiosityCooldown = 60; curious = true
+            let b = originBounds(screen)
+            let side: CGFloat = dx > 0 ? -1 : 1
+            startWalk(to: CGPoint(x: clamp(mouse.x + side * 48 - v.spriteCenterX, b.minX, b.maxX),
+                                  y: clamp(mouse.y - 30 - v.oy, b.minY, b.maxY)))
         }
 
         // falls asleep when you stop using the Mac
         let idle = userIdleSeconds()
-        if !idleSleeping && idle > 150 && !dragging && !airborne && v.mode != .sleep {
+        if !idleSleeping && idle > 150 && !dragging && !airborne && v.mode != .sleep && v.mode != .quiet && v.mode != .peek {
             idleSleeping = true; enter(.sleep, for: 9999)
         } else if idleSleeping && idle < 1.5 && v.mode != .alert {
             idleSleeping = false
             enter(.startled, for: 0.7); say("Huh?! You're back!", for: 2.5)
         }
+
+        v.hat = currentHat()
+        petCooldown = max(0, petCooldown - dt)
+        curiosityCooldown = max(0, curiosityCooldown - dt)
+        if v.heartT > 0 { v.heartT -= dt }
 
         // Claude Code events (permission prompts, waiting, done)
         eventsTimer -= dt
@@ -1032,7 +1191,7 @@ final class Pet: NSObject {
 
         // Claude Code is working
         if v.mode == .alert && claudeActive && Date().timeIntervalSince1970 - alertStart > 4 && claudeActiveUntil - 7 > alertStart + 3 { stopAlert() }
-        if claudeActive && !dragging && !airborne && v.mode != .sleep && v.mode != .drag && v.mode != .startled && v.mode != .alert {
+        if claudeActive && !dragging && !airborne && v.mode != .sleep && v.mode != .drag && v.mode != .startled && v.mode != .alert && v.mode != .quiet && v.mode != .peek {
             if v.mode != .work {
                 enter(.work, for: 9999)
                 if !claudeAnnounced { claudeAnnounced = true; say(["Claude is working…", "Let's do this!", "Typing…"].randomElement()!, for: 3) }
@@ -1065,6 +1224,7 @@ final class Pet: NSObject {
                 let hard = vy < -900
                 vy = 0
                 v.squash = hard ? 0.65 : 0.8
+                playSound(hard ? "Basso" : "Bottle")
                 standing = true; standingOn = floor.owner
                 if hard && Bool.random() { enter(.dizzy, for: 1.2) } else { enter(.idle, for: CGFloat.random(in: 1...3)) }
             }
@@ -1092,7 +1252,9 @@ final class Pet: NSObject {
                 if run && standing && standingOn != "floor" && Double.random(in: 0..<1) < 0.4 {
                     say(["Nice view!", "I can see everything from here", "Hop!"].randomElement()!, for: 2)
                 }
+                if v.carrying { v.squash = 0.85; playSound("Bottle") }
                 enter(.idle, for: CGFloat.random(in: 1.5...4))
+                if curious { curious = false; say("Hmm?", for: 2); enter(.idle, for: 4) }
             } else {
                 let step = min(dist, speed * dt)
                 pos.x += d.x / dist * step; pos.y += d.y / dist * step
@@ -1103,6 +1265,35 @@ final class Pet: NSObject {
             v.armL = Int(v.time * 3.5) % 2; v.armR = 1 - v.armL
             if v.hop == 0 && v.hopVel == 0 { v.hopVel = 110 }
             modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .peek:
+            let f = screen.visibleFrame
+            let peekX = peekSide < 0 ? f.minX - view.ox - spriteW * 0.55 : f.maxX - view.ox - spriteW * 0.45
+            let d = walkTarget.x - pos.x
+            if abs(d) > 1 {
+                v.walking = true
+                v.facing = d > 0 ? 1 : -1
+                pos.x += (d > 0 ? 1 : -1) * min(abs(d), 90 * dt); place()
+            } else {
+                v.walking = false
+                switch peekPhase {
+                case 0: peekPhase = 1; modeTime = CGFloat.random(in: 2...4)
+                case 1:
+                    modeTime -= dt
+                    if modeTime <= 0 { peekPhase = 2; walkTarget.x = peekX; modeTime = 2.5; say("Peekaboo!", for: 1.5); playSound("Pop") }
+                case 2:
+                    modeTime -= dt
+                    if modeTime <= 0 { peekPhase = 3; walkTarget.x = peekSide < 0 ? f.minX - view.ox + 20 : f.maxX - view.ox - spriteW - 20 }
+                default: enter(.idle, for: 2)
+                }
+            }
+            v.eyeDX = Int(-peekSide); v.eyeDY = 0
+        case .petted:
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .build:
+            v.armR = 1
+            modeTime -= dt; if modeTime <= 0 { pickBehavior() }
+        case .quiet:
+            v.eyeDX = dx > 90 ? 1 : (dx < -90 ? -1 : 0); v.eyeDY = dy > 90 ? -1 : (dy < -90 ? 1 : 0)
         case .alert:
             if v.hop == 0 && v.hopVel == 0 { v.hopVel = 170 }
             alertRepeat -= dt
@@ -1149,11 +1340,16 @@ final class Pet: NSObject {
         if !dragging && hypot(p.x - s.x, p.y - s.y) > 4 {
             dragging = true
             idleSleeping = false
+            dragMaxSpeed = 0
             enter(.drag, for: 0); view.speech = nil; view.hop = 0; view.hopVel = 0; view.turn = 0
             view.armL = 1; view.armR = 1
             airborne = false; vy = 0
         }
-        if dragging { pos = CGPoint(x: o.x + p.x - s.x, y: o.y + p.y - s.y); place() }
+        if dragging {
+            let np = CGPoint(x: o.x + p.x - s.x, y: o.y + p.y - s.y)
+            dragMaxSpeed = max(dragMaxSpeed, hypot(np.x - pos.x, np.y - pos.y) * 60)
+            pos = np; place()
+        }
     }
     func mouseUp(clicks: Int) {
         if dragging {
@@ -1163,14 +1359,18 @@ final class Pet: NSObject {
             let fl = floorUnder(x: centerX, maxY: feetY + 4)
             standing = abs(feetY - fl.y) <= 3
             if standing { standingOn = fl.owner }
-            enter(.idle, for: 3)
-            say(standing && standingOn != "floor" ? "What a nice spot!" : "Here?", for: 1.6)
+            if dragMaxSpeed > 2600 { enter(.dizzy, for: 1.6); playSound("Basso") }
+            else if quietMode { enter(.quiet, for: 0) }
+            else { enter(.idle, for: 3); say(standing && standingOn != "floor" ? "What a nice spot!" : "Here?", for: 1.6) }
+            dragMaxSpeed = 0
         } else { poke(clicks: clicks) }
         dragStart = nil
     }
     func poke(clicks: Int) {
         idleSleeping = false
         if view.mode == .alert { stopAlert(); say("On my way!", for: 1.5); return }
+        if view.mode == .quiet { alertMessage = ""; view.heartT = 1.5; return }
+        playSound("Tink")
         if updateAvailable != nil && Date().timeIntervalSince1970 < updateClickUntil, let url = URL(string: releasesPage) {
             NSWorkspace.shared.open(url)
             updateClickUntil = 0
@@ -1178,7 +1378,7 @@ final class Pet: NSObject {
             return
         }
         if view.mode == .sleep { enter(.idle, for: 3); say("Huh? I'm awake!", for: 2.5); return }
-        if clicks >= 2 { enter(.cheer, for: 3); say("Party!", for: 2); return }
+        if clicks >= 2 { enter(.cheer, for: 3); say("Party!", for: 2); playSound("Glass"); return }
         enter(.happy, for: 1.6)
         say(clickPhrases.randomElement()!, for: 1.8)
     }
@@ -1196,6 +1396,18 @@ final class Pet: NSObject {
         add("Sleep / wake up", #selector(menuSleep))
         add("Come to the center", #selector(menuHome))
         m.addItem(.separator())
+        add(quietMode ? "Do not disturb: turn off" : "Do not disturb: turn on", #selector(menuQuiet))
+        let hatItem = NSMenuItem(title: tr("Hat"), action: nil, keyEquivalent: "")
+        let hatMenu = NSMenu()
+        let hats: [(Hat, String)] = [(.auto, "Automatic (Santa hat in December)"), (.none, "No hat"), (.hardHat, "Hard hat"), (.party, "Party hat"), (.santa, "Santa hat"), (.sunglasses, "Sunglasses")]
+        for (h, title) in hats {
+            let i = NSMenuItem(title: tr(title), action: #selector(menuHat(_:)), keyEquivalent: "")
+            i.target = self; i.representedObject = h.rawValue; i.state = hatPref == h ? .on : .off
+            hatMenu.addItem(i)
+        }
+        hatItem.submenu = hatMenu
+        m.addItem(hatItem)
+        add(soundsOn ? "Sounds: turn off" : "Sounds: turn on", #selector(menuSounds))
         add(hooksInstalled() ? "Claude Code alerts: turn off" : "Claude Code alerts: turn on", #selector(menuHooks))
         add("Check for updates…", #selector(menuUpdate))
         add("Quit Clawd", #selector(menuQuit), "q")
@@ -1220,6 +1432,25 @@ final class Pet: NSObject {
             if hooksInstalled() { try removeHooks(); say("Alerts off.", for: 3) }
             else { try installHooks(); enter(.cheer, for: 2.5); say("Alerts on! Claude Code will tell me when it needs you.", for: 5) }
         } catch { say("Couldn't set up the alerts", for: 3) }
+        statusItem?.menu = makeMenu()
+    }
+    @objc func menuQuiet() {
+        prefs.set(!quietMode, forKey: "quiet")
+        if quietMode {
+            let f = (NSScreen.main ?? screen).visibleFrame
+            walkTarget = CGPoint(x: f.maxX - view.ox - spriteW - 16, y: f.minY - view.oy)
+            enter(.walk, for: 30); view.speech = nil
+            say("Quiet mode. I'll wait here.", for: 2.5)
+        } else {
+            enter(.idle, for: 2); say("I'm back!", for: 2)
+        }
+        statusItem?.menu = makeMenu()
+    }
+    @objc func menuSounds() { prefs.set(!soundsOn, forKey: "sounds"); if soundsOn { playSound("Tink") }; statusItem?.menu = makeMenu() }
+    @objc func menuHat(_ sender: NSMenuItem) {
+        prefs.set(sender.representedObject as? String ?? "auto", forKey: "hat")
+        view.hat = currentHat()
+        if view.hat == .hardHat { enter(.build, for: 4) } else { enter(.happy, for: 1.5) }
         statusItem?.menu = makeMenu()
     }
     @objc func menuUpdate() { checkForUpdates(quiet: false) }
@@ -1259,6 +1490,12 @@ render("read")  { $0.mode = .read; $0.armL = 1; $0.time = 0.5 }
 render("sweep") { $0.mode = .sweep; $0.armL = 1; $0.facing = -1; $0.time = 0.3 }
 render("juggle") { $0.mode = .juggle; $0.armL = 1; $0.time = 0.9 }
 render("think") { $0.mode = .think; $0.speech = "..." }
+render("hardhat") { $0.hat = .hardHat; $0.mode = .build; $0.armR = 1; $0.time = 0.3 }
+render("party") { $0.hat = .party; $0.eyeStyle = .happy }
+render("santa") { $0.hat = .santa }
+render("shades") { $0.hat = .sunglasses }
+render("box") { $0.mode = .run; $0.carrying = true; $0.walking = true; $0.armL = 1; $0.armR = 1; $0.time = 0.3 }
+render("petted") { $0.mode = .petted; $0.eyeStyle = .content; $0.heartT = 1.5; $0.time = 0.4 }
 render("alert") { $0.mode = .alert; $0.armL = 1; $0.armR = 1; $0.hop = 8; $0.time = 0.1; $0.speech = "Claude needs your approval!" }
 print("version compare:", isNewer("v1.2.0", than: "1.1.0"), isNewer("v1.1.0", than: "1.2.0"), isNewer("v1.2.0", than: "1.2.0"), isNewer("v2.0", than: "1.9.9"))
 // list the detected windows
